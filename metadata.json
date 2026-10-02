@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix sayeh",
+  "description": "سامانه انتقال امن داده‌های Air-Gap از طریق کیوآرکد و دوربین بدون اتصال فیزیکی یا شبکه با رمزنگاری AES-256",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
