@@ -1336,26 +1336,14 @@ export const IntegrationHub: React.FC<Props> = ({
 
                   {/* 2. PROMINENT "شروع فرآیند" ACTION BUTTON (دکمه شروع فرآیند) */}
                   {isWaitingToStart ? (
-                    <div className="flex flex-wrap items-center gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={handleStartProcess}
-                        className="px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-black text-sm shadow-lg shadow-emerald-900/30 transition-all flex items-center justify-center gap-2 cursor-pointer animate-pulse shrink-0"
-                      >
-                        <Play className="w-4 h-4 fill-current" />
-                        <span>{lang === 'fa' ? 'شروع فرآیند انتقال نوری' : 'Start Optical Process'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => onSendToTransmitter(activePayload)}
-                        className="px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs transition cursor-pointer flex items-center gap-1.5 border border-slate-300 dark:border-slate-700 shadow-sm shrink-0"
-                        title={lang === 'fa' ? 'انتقال این پیلود به صف اصلی فرستنده' : 'Send to Main Transmitter Queue'}
-                      >
-                        <Send className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-                        <span>{lang === 'fa' ? 'ارسال به صف اصلی' : 'Send to Main Queue'}</span>
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={handleStartProcess}
+                      className="px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-black text-sm shadow-lg shadow-emerald-900/30 transition-all flex items-center justify-center gap-2 cursor-pointer animate-pulse shrink-0"
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      <span>{lang === 'fa' ? 'شروع فرآیند انتقال نوری' : 'Start Optical Process'}</span>
+                    </button>
                   ) : (
                     <div className="flex items-center gap-2 shrink-0">
                       <button

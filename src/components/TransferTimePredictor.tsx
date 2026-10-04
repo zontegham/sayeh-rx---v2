@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Language, ChromaMultiplexMode } from '../types/index';
+import { Language } from '../types/index';
 import { 
   calculateTransferEstimate, 
   TransferEstimateResult,
@@ -27,7 +27,6 @@ interface Props {
   chunkSize: number;
   autoAdaptiveDensity?: boolean;
   cyclesPerItem?: number;
-  chromaMode?: ChromaMultiplexMode;
   lang: Language;
   onApplyTuning?: (newFps: number, newDisplayCount: 1 | 2 | 4 | 8 | 16) => void;
   // Live broadcast status (optional)
@@ -45,7 +44,6 @@ export const TransferTimePredictor: React.FC<Props> = ({
   chunkSize,
   autoAdaptiveDensity = true,
   cyclesPerItem = 1,
-  chromaMode = 'mono',
   lang,
   onApplyTuning,
   isCurrentlyBroadcasting = false,
@@ -67,11 +65,10 @@ export const TransferTimePredictor: React.FC<Props> = ({
         chunkSize,
         autoAdaptiveDensity,
         cycles: cyclesPerItem,
-        chromaMode,
       },
       lang
     );
-  }, [fileSizeBytes, isBinary, fps, displayCount, chunkSize, autoAdaptiveDensity, cyclesPerItem, chromaMode, lang]);
+  }, [fileSizeBytes, isBinary, fps, displayCount, chunkSize, autoAdaptiveDensity, cyclesPerItem, lang]);
 
   // Simulated estimate for "what-if" tuning
   const simulatedEstimate: TransferEstimateResult = useMemo(() => {
@@ -84,11 +81,10 @@ export const TransferTimePredictor: React.FC<Props> = ({
         chunkSize,
         autoAdaptiveDensity,
         cycles: cyclesPerItem,
-        chromaMode,
       },
       lang
     );
-  }, [fileSizeBytes, isBinary, simFps, simDisplayCount, chunkSize, autoAdaptiveDensity, cyclesPerItem, chromaMode, lang]);
+  }, [fileSizeBytes, isBinary, simFps, simDisplayCount, chunkSize, autoAdaptiveDensity, cyclesPerItem, lang]);
 
   // Live remaining time countdown during broadcast
   const liveRemainingSeconds = useMemo(() => {
@@ -126,12 +122,6 @@ export const TransferTimePredictor: React.FC<Props> = ({
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${currentEstimate.ratingColor}`}>
                 {lang === 'fa' ? currentEstimate.ratingLabelFa : currentEstimate.ratingLabelEn}
               </span>
-              {chromaMode === 'rgb_3x' && (
-                <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-gradient-to-r from-red-500/15 via-green-500/15 to-blue-500/15 border-cyan-500/40 text-cyan-800 dark:text-cyan-200">
-                  <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                  <span>{lang === 'fa' ? '🌈 پهنای باند ۳ برابری (RGB 3x)' : '🌈 RGB 3x Multiplexing'}</span>
-                </span>
-              )}
             </div>
             {fileName && (
               <p className="text-[11px] text-slate-600 dark:text-slate-400 truncate max-w-xs sm:max-w-md font-mono mt-0.5">

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Language, TransmitterCoreConfig, ChromaMultiplexMode, AntiGlareTheme } from '../types/index';
+import { Language, TransmitterCoreConfig } from '../types/index';
 import { 
   Radio, 
   ShieldCheck, 
@@ -15,9 +15,7 @@ import {
   Cpu, 
   Server,
   Play,
-  Zap,
-  Palette,
-  Sun
+  Zap
 } from 'lucide-react';
 
 interface Props {
@@ -43,18 +41,6 @@ export const TransmitterCoreSettings: React.FC<Props> = ({
   const [requireManualStartOnNewFile, setRequireManualStartOnNewFile] = useState(
     config.requireManualStartOnNewFile !== false
   );
-  const [defaultCyclesPerItem, setDefaultCyclesPerItem] = useState(
-    config.defaultCyclesPerItem !== undefined ? config.defaultCyclesPerItem : 1
-  );
-  const [defaultAutoAdvance, setDefaultAutoAdvance] = useState(
-    config.defaultAutoAdvance !== undefined ? config.defaultAutoAdvance : true
-  );
-  const [defaultChromaMode, setDefaultChromaMode] = useState<ChromaMultiplexMode>(
-    config.defaultChromaMode || 'mono'
-  );
-  const [defaultAntiGlareTheme, setDefaultAntiGlareTheme] = useState<AntiGlareTheme>(
-    config.defaultAntiGlareTheme || 'additive_dark'
-  );
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
@@ -68,10 +54,6 @@ export const TransmitterCoreSettings: React.FC<Props> = ({
       defaultDisplayCount,
       lockAsDedicatedSender,
       requireManualStartOnNewFile,
-      defaultCyclesPerItem,
-      defaultAutoAdvance,
-      defaultChromaMode,
-      defaultAntiGlareTheme,
     });
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
@@ -286,156 +268,7 @@ export const TransmitterCoreSettings: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Section 4: Loop Count & Repetition Prevention Policy */}
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 p-5 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
-            <div className="flex items-center gap-2">
-              <RefreshCw className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-              <div>
-                <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                  {lang === 'fa' ? 'سیاست تعداد دورهای پخش و جلوگیری از تکرار بیهوده' : 'Broadcast Loop Count & Redundancy Policy'}
-                </h2>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  {lang === 'fa'
-                    ? 'تعیین سقف دورهای پخش هر سند نوری. پس از پایان سقف تعیین‌شده، پخش متوقف می‌شود تا از انتشار نوری بیهوده داده‌ها جلوگیری گردد.'
-                    : 'Set broadcast cycle limits per document. Once finished, optical emission stops to prevent redundant exposure.'}
-                </p>
-              </div>
-            </div>
-
-            {/* Loop count preset buttons */}
-            <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-              {[
-                { val: 1, labelFa: '۱ دور (متوقف پس از پایان)', labelEn: '1 Loop (Stop)', shortFa: '۱ دور', shortEn: '1x' },
-                { val: 2, labelFa: '۲ دور (اطمینان بالا)', labelEn: '2 Loops', shortFa: '۲ دور', shortEn: '2x' },
-                { val: 3, labelFa: '۳ دور', labelEn: '3 Loops', shortFa: '۳ دور', shortEn: '3x' },
-                { val: 5, labelFa: '۵ دور', labelEn: '5 Loops', shortFa: '۵ دور', shortEn: '5x' },
-                { val: 0, labelFa: 'نامحدود (تکرار بی‌پایان)', labelEn: 'Infinite Loop', shortFa: 'بی‌نهایت', shortEn: '∞' },
-              ].map((opt) => (
-                <button
-                  key={opt.val}
-                  type="button"
-                  onClick={() => setDefaultCyclesPerItem(opt.val)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                    defaultCyclesPerItem === opt.val
-                      ? 'bg-cyan-600 text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                  title={lang === 'fa' ? opt.labelFa : opt.labelEn}
-                >
-                  {lang === 'fa' ? opt.shortFa : opt.shortEn}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs">
-            <div className="space-y-0.5">
-              <span className="font-bold text-slate-900 dark:text-white block">
-                {lang === 'fa' ? 'انتقال خودکار به فایل بعدی صف (Auto-Advance Queue):' : 'Auto-advance to next queued document:'}
-              </span>
-              <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
-                {lang === 'fa'
-                  ? 'پس از پایان دورهای تعیین‌شده سند فعلی، بلافاصله سند بعدی صف پخش شود. با پایان کل صف، فرآیند متوقف خواهد شد.'
-                  : 'Immediately switch to the next queued item after completing cycles. Stops when queue is finished.'}
-              </span>
-            </div>
-
-            <button
-              type="button"
-              role="switch"
-              aria-checked={defaultAutoAdvance}
-              dir="ltr"
-              onClick={() => setDefaultAutoAdvance(!defaultAutoAdvance)}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-cyan-500/50 shadow-inner ${
-                defaultAutoAdvance ? 'bg-cyan-600' : 'bg-slate-300 dark:bg-slate-700'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ease-in-out ${
-                  defaultAutoAdvance ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* Section 5: RGB Optical Chroma-Multiplexing & Anti-Glare Calibration */}
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 p-5 shadow-sm space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
-            <div className="flex items-center gap-2">
-              <Palette className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-              <div>
-                <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <span>{lang === 'fa' ? 'مالتی‌پلکس نوری سه‌رنگ (RGB Chroma 3x) و کالیبراسیون ضد بازتاب' : 'RGB Chroma Multiplexing & Anti-Glare'}</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-700 font-bold">
-                    300% SPEED
-                  </span>
-                </h2>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  {lang === 'fa'
-                    ? 'ارسال ۳ کیوآرکد مستقل در کانال‌های قرمز (650nm)، سبز (532nm) و آبی (450nm) در یک فریم نوری جهت ۳ برابر کردن پهنای باند.'
-                    : 'Transmits 3 independent QR packets across Red, Green, and Blue optical channels in a single frame.'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                {lang === 'fa' ? 'حالت پیش‌فرض مالتی‌پلکس نوری:' : 'Default Optical Multiplex Mode:'}
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { id: 'mono' as const, labelFa: '⚡ تک‌رنگ (BW 1x)', labelEn: 'Mono Standard (1x)' },
-                  { id: 'rgb_3x' as const, labelFa: '🌈 سه‌رنگ (RGB 3x)', labelEn: 'RGB Chroma (3x)' },
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setDefaultChromaMode(item.id)}
-                    className={`p-2.5 rounded-xl border text-xs font-bold transition cursor-pointer text-center ${
-                      defaultChromaMode === item.id
-                        ? 'bg-cyan-50 dark:bg-cyan-950/80 border-cyan-500 text-cyan-700 dark:text-cyan-300 shadow-xs'
-                        : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {lang === 'fa' ? item.labelFa : item.labelEn}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                {lang === 'fa' ? 'تم نوری و کالیبراسیون ضد بازتاب:' : 'Optical Tone & Anti-Glare Calibration:'}
-              </label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {[
-                  { id: 'additive_dark' as const, labelFa: 'تیره اشباع', labelEn: 'Dark Additive' },
-                  { id: 'subtractive_light' as const, labelFa: 'روشن CMY', labelEn: 'Subtractive Light' },
-                  { id: 'anti_glare' as const, labelFa: 'ضد بازتاب فسفری', labelEn: 'Anti-Glare' },
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setDefaultAntiGlareTheme(item.id)}
-                    className={`p-2 rounded-xl border text-[11px] font-bold transition cursor-pointer text-center ${
-                      defaultAntiGlareTheme === item.id
-                        ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-500 text-emerald-700 dark:text-emerald-300 shadow-xs'
-                        : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {lang === 'fa' ? item.labelFa : item.labelEn}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Section 6: Hardware Air-Gap Optical Diode Assurance */}
+        {/* Section 4: Hardware Air-Gap Optical Diode Assurance */}
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 p-5 shadow-sm space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
             <div className="flex items-center gap-2">

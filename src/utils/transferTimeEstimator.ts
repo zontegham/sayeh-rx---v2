@@ -4,7 +4,7 @@
  * and camera capture redundancy based on file payload size, shutter FPS, and multi-QR display count.
  */
 
-import { Language, ChromaMultiplexMode } from '../types/index';
+import { Language } from '../types/index';
 
 export interface TransferEstimateOptions {
   fileSizeBytes: number;
@@ -14,7 +14,6 @@ export interface TransferEstimateOptions {
   chunkSize?: number;
   autoAdaptiveDensity?: boolean;
   cycles?: number;
-  chromaMode?: ChromaMultiplexMode;
 }
 
 export interface TransferEstimateResult {
@@ -36,8 +35,6 @@ export interface TransferEstimateResult {
   ratingLabelFa: string;
   ratingLabelEn: string;
   ratingColor: string;
-  chromaMode?: ChromaMultiplexMode;
-  speedGainPercentage?: number;
   optimizationTipFa?: string;
   optimizationTipEn?: string;
 }
@@ -90,7 +87,6 @@ export function calculateTransferEstimate(
     chunkSize = 240,
     autoAdaptiveDensity = true,
     cycles = 1,
-    chromaMode = 'mono',
   } = options;
 
   if (fileSizeBytes <= 0) {
@@ -113,7 +109,6 @@ export function calculateTransferEstimate(
       ratingLabelFa: 'آنی',
       ratingLabelEn: 'Instant',
       ratingColor: 'text-emerald-500',
-      chromaMode,
     };
   }
 
@@ -138,10 +133,9 @@ export function calculateTransferEstimate(
     }
   }
 
-  // Total chunks and pages (RGB 3x packs 3 chunks per slot)
+  // Total chunks and pages
   const totalChunks = Math.max(1, Math.ceil(effectivePayloadBytes / effChunkSize));
-  const chunksPerFrame = chromaMode === 'rgb_3x' ? displayCount * 3 : displayCount;
-  const totalPages = Math.max(1, Math.ceil(totalChunks / chunksPerFrame));
+  const totalPages = Math.max(1, Math.ceil(totalChunks / displayCount));
 
   // Time calculations:
   // 1. Single cycle time (حداقل زمان تئوریک انتقال ۱ دور کامل)
@@ -208,12 +202,9 @@ export function calculateTransferEstimate(
   let optimizationTipFa: string | undefined;
   let optimizationTipEn: string | undefined;
 
-  if (chromaMode === 'rgb_3x') {
-    optimizationTipFa = '🌈 مالتی‌پلکس نوری سه‌رنگ RGB فعال است: ارسال همزمان ۳ بسته در هر فریم با ۳۰۰٪ پهنای باند.';
-    optimizationTipEn = '🌈 RGB Chroma 3x active: 3 parallel packets per frame yielding 300% optical throughput.';
-  } else if (displayCount === 1 && singleCycleSeconds > 15) {
-    optimizationTipFa = '💡 با فعال‌سازی مالتی‌پلکس رنگی RGB یا انتخاب چیدمان ۲/۴ کیوآر، زمان انتقال را به یک‌سوم کاهش دهید.';
-    optimizationTipEn = '💡 Enable RGB Chroma Multiplexing or 2x/4x QR grid to cut transfer time by up to 67%.';
+  if (displayCount === 1 && singleCycleSeconds > 15) {
+    optimizationTipFa = '💡 با انتخاب چیدمان ۲ یا ۴ کیوآر همزمان، زمان انتقال نوری را به نصف یا یک‌چهارم کاهش دهید.';
+    optimizationTipEn = '💡 Switch to 2x or 4x QR grid to cut optical transfer time by 50% to 75%.';
   } else if (fps < 5 && singleCycleSeconds > 25) {
     optimizationTipFa = '💡 اگر دوربین گیرنده وب‌کم با کیفیتی است، افزایش نرخ شاتر به ۵ FPS سرعت انتقال را ۶۶٪ بیشتر می‌کند.';
     optimizationTipEn = '💡 If receiver camera has high frame rate, increasing shutter to 5 FPS speeds transfer up by 66%.';
@@ -241,8 +232,6 @@ export function calculateTransferEstimate(
     ratingLabelFa,
     ratingLabelEn,
     ratingColor,
-    chromaMode,
-    speedGainPercentage: chromaMode === 'rgb_3x' ? 67 : undefined,
     optimizationTipFa,
     optimizationTipEn,
   };

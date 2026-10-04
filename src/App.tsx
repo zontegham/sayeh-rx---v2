@@ -180,10 +180,6 @@ export default function App() {
             wizardConfig={wizardConfig}
             onOpenWizard={() => setIsWizardOpen(true)}
             requireManualStartOnNewFile={txConfig.requireManualStartOnNewFile !== false}
-            defaultCyclesPerItem={txConfig.defaultCyclesPerItem}
-            defaultAutoAdvance={txConfig.defaultAutoAdvance}
-            defaultChromaMode={txConfig.defaultChromaMode}
-            defaultAntiGlareTheme={txConfig.defaultAntiGlareTheme}
           />
         )}
 

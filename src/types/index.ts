@@ -4,9 +4,6 @@ export type Theme = 'dark' | 'light';
 
 export type TransmitterTab = 'optical_tx' | 'inbound_hub' | 'keys_tx' | 'history_tx' | 'settings_tx';
 
-export type ChromaMultiplexMode = 'mono' | 'rgb_3x';
-export type AntiGlareTheme = 'additive_dark' | 'subtractive_light' | 'anti_glare';
-
 export interface TransmitterCoreConfig {
   stationId: string;
   stationName: string;
@@ -16,10 +13,6 @@ export interface TransmitterCoreConfig {
   defaultDisplayCount: 1 | 2 | 4 | 8 | 16;
   lockAsDedicatedSender: boolean;
   requireManualStartOnNewFile?: boolean;
-  defaultCyclesPerItem?: number;
-  defaultAutoAdvance?: boolean;
-  defaultChromaMode?: ChromaMultiplexMode;
-  defaultAntiGlareTheme?: AntiGlareTheme;
 }
 
 export interface EncryptedEnvelope {
@@ -80,15 +73,7 @@ export interface AuditLog {
   sha256: string;
   timestamp: number;
   status: 'success' | 'tampered' | 'corrupt';
-  priority?: DocumentPriority;
-  classification?: SecurityClassification;
-  encodingMode?: string;
-  chromaMode?: ChromaMultiplexMode;
-  cyclesCompleted?: number;
 }
-
-export type DocumentPriority = 'flash' | 'high' | 'normal' | 'bulk';
-export type SecurityClassification = 'unclassified' | 'confidential' | 'secret' | 'top_secret' | 'financial';
 
 export interface QueueItem {
   id: string;
@@ -99,38 +84,8 @@ export interface QueueItem {
   isBinary: boolean;
   status: 'pending' | 'broadcasting' | 'completed' | 'processing';
   createdAt: number;
-  priority?: DocumentPriority;
-  classification?: SecurityClassification;
-  sha256?: string;
+  priority?: number;
   cyclesCompleted?: number;
   chunksCount?: number;
-  customLabel?: string;
-}
-
-export type TransmissionEncodingMode = 'sequential' | 'fountain';
-
-export interface AirGapEmissionCertificate {
-  certificateId: string;
-  stationId: string;
-  stationName: string;
-  transferId: string;
-  fileName?: string;
-  fileType: string;
-  totalBytes: number;
-  totalFrames: number;
-  encodingMode: TransmissionEncodingMode;
-  chromaMode?: ChromaMultiplexMode;
-  encryptionMode: string;
-  payloadSha256: string;
-  envelopeHash?: string;
-  timestamp: number;
-  timestampFormattedUtc: string;
-  timestampFormattedJalali: string;
-  cyclesCompleted: number;
-  shutterFps: number;
-  displayCount: number;
-  securityIssuer: string;
-  digitalSignatureHex: string;
-  qrWireCertificate: string;
 }
 

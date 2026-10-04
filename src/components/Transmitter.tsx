@@ -4,9 +4,7 @@ import {
   EncryptedEnvelope, 
   Language, 
   AuditLog,
-  QueueItem,
-  ChromaMultiplexMode,
-  AntiGlareTheme
+  QueueItem
 } from '../types/index';
 import { 
   encryptPayload, 
@@ -22,7 +20,6 @@ import {
   deletePayloadData, 
   clearAllPayloads 
 } from '../utils/payloadStorage';
-import { renderRgbChromaSvg, getRgbChannelTelemetry } from '../utils/rgbChromaRenderer';
 import { 
   Lock, 
   Key, 
@@ -66,18 +63,11 @@ import {
   Sun,
   Clock,
   Inbox,
-  RotateCcw,
-  Award,
-  Palette,
   X
 } from 'lucide-react';
 import { WizardConfig } from './WorkflowWizardModal';
 import { TransmissionQueueManager } from './TransmissionQueueManager';
 import { TransferTimePredictor } from './TransferTimePredictor';
-import { generateFountainPackets } from '../utils/fountainCodes';
-import { createEmissionCertificate } from '../utils/emissionCertificate';
-import { EmissionCertificateModal } from './EmissionCertificateModal';
-import { AirGapEmissionCertificate, TransmissionEncodingMode } from '../types/index';
 
 interface Props {
   lang: Language;
@@ -87,10 +77,6 @@ interface Props {
   wizardConfig?: WizardConfig | null;
   onOpenWizard?: () => void;
   requireManualStartOnNewFile?: boolean;
-  defaultCyclesPerItem?: number;
-  defaultAutoAdvance?: boolean;
-  defaultChromaMode?: ChromaMultiplexMode;
-  defaultAntiGlareTheme?: AntiGlareTheme;
 }
 
 export const Transmitter: React.FC<Props> = ({
@@ -101,10 +87,6 @@ export const Transmitter: React.FC<Props> = ({
   wizardConfig,
   onOpenWizard,
   requireManualStartOnNewFile = true,
-  defaultCyclesPerItem,
-  defaultAutoAdvance,
-  defaultChromaMode,
-  defaultAntiGlareTheme,
 }) => {
   // Input Data States (پیش‌فرض بر روی فایل / سند تنظیم شد)
   const [inputMode, setInputMode] = useState<'text' | 'file'>('file');
@@ -128,20 +110,10 @@ export const Transmitter: React.FC<Props> = ({
   const [errorCorrection, setErrorCorrection] = useState<'L' | 'M' | 'Q' | 'H'>('L');
   const [qrSize, setQrSize] = useState<'standard' | 'large' | 'huge'>('standard');
 
-  // Phase 2: RGB Optical Chroma-Multiplexing & Anti-Glare Calibration
-  const [chromaMode, setChromaMode] = useState<ChromaMultiplexMode>(defaultChromaMode || 'mono');
-  const [antiGlareTheme, setAntiGlareTheme] = useState<AntiGlareTheme>(defaultAntiGlareTheme || 'additive_dark');
-
   // Adaptive Optical Readability Engine (حل قطعی مشکل خوانایی در ابعاد کوچک)
   const [autoAdaptiveDensity, setAutoAdaptiveDensity] = useState<boolean>(true);
   const [readabilityPreset, setReadabilityPreset] = useState<'ultra' | 'balanced' | 'dense'>('ultra');
   const [focusedChunkIndex, setFocusedChunkIndex] = useState<number | null>(null);
-
-  // Phase 1: Fountain Code (Zero-Sync) & Cryptographic Emission Certificate States
-  const [encodingMode, setEncodingMode] = useState<TransmissionEncodingMode>('sequential');
-  const [fountainRedundancy, setFountainRedundancy] = useState<number>(0.4); // 40% parity frames
-  const [activeCertificate, setActiveCertificate] = useState<AirGapEmissionCertificate | null>(null);
-  const [isCertModalOpen, setIsCertModalOpen] = useState<boolean>(false);
 
   // Calculate effective chunk size based on adaptive optical rules & payload volume
   const effectiveChunkSize = useCallback(() => {
@@ -216,22 +188,19 @@ export const Transmitter: React.FC<Props> = ({
     return null;
   });
   const [autoAdvanceQueue, setAutoAdvanceQueue] = useState<boolean>(() => {
-    if (defaultAutoAdvance !== undefined) return defaultAutoAdvance;
     return localStorage.getItem('sayeh_tx_auto_advance') === 'true';
   });
 
   // Multi-cycle and optical transition delay states
   const [cyclesPerItem, setCyclesPerItem] = useState<number>(() => {
-    if (defaultCyclesPerItem !== undefined) return defaultCyclesPerItem;
     const saved = localStorage.getItem('sayeh_tx_cycles_per_item');
-    return saved !== null ? parseInt(saved, 10) : 1;
+    return saved ? parseInt(saved, 10) : 1;
   });
   const [transitionDelaySec, setTransitionDelaySec] = useState<number>(() => {
     const saved = localStorage.getItem('sayeh_tx_transition_delay');
     return saved ? parseFloat(saved) : 1.5;
   });
   const [cyclesCompleted, setCyclesCompleted] = useState<number>(0);
-  const [isCycleFinished, setIsCycleFinished] = useState<boolean>(false);
   const [isTransitioningQueue, setIsTransitioningQueue] = useState<boolean>(false);
   const [transitionCountdown, setTransitionCountdown] = useState<number>(0);
   const isTransitioningRef = useRef<boolean>(false);
@@ -313,9 +282,6 @@ export const Transmitter: React.FC<Props> = ({
       setSelectedFile(null);
     }
 
-    setCyclesCompleted(0);
-    setIsCycleFinished(false);
-
     setQueue((prev) =>
       prev.map((q) => ({
         ...q,
@@ -353,12 +319,6 @@ export const Transmitter: React.FC<Props> = ({
         queueDataStore.current.set(itemId, base64);
         await savePayloadData(itemId, base64);
 
-        let fileSha256 = '';
-        try {
-          const enc = new TextEncoder();
-          fileSha256 = await calculateSha256(enc.encode(base64));
-        } catch {}
-
         const newItem: QueueItem = {
           id: itemId,
           name: file.name,
@@ -368,9 +328,6 @@ export const Transmitter: React.FC<Props> = ({
           isBinary: true,
           status: 'pending',
           createdAt: Date.now() + i,
-          priority: 'normal',
-          classification: 'confidential',
-          sha256: fileSha256,
         };
 
         newItems.push(newItem);
@@ -419,12 +376,6 @@ export const Transmitter: React.FC<Props> = ({
     queueDataStore.current.set(itemId, payload);
     await savePayloadData(itemId, payload);
 
-    let textSha256 = '';
-    try {
-      const enc = new TextEncoder();
-      textSha256 = await calculateSha256(enc.encode(payload));
-    } catch {}
-
     const newItem: QueueItem = {
       id: itemId,
       name,
@@ -434,9 +385,6 @@ export const Transmitter: React.FC<Props> = ({
       isBinary,
       status: 'pending',
       createdAt: Date.now(),
-      priority: 'normal',
-      classification: 'confidential',
-      sha256: textSha256,
     };
 
     setQueue((prev) => {
@@ -487,10 +435,6 @@ export const Transmitter: React.FC<Props> = ({
     setEnvelope(null);
     setChunks([]);
     setRenderedSlotSvgs({});
-    setIsPlaying(false);
-    setHasUserStarted(false);
-    setIsCycleFinished(false);
-    setCyclesCompleted(0);
     try {
       localStorage.removeItem('sayeh_tx_queue');
     } catch {}
@@ -551,10 +495,6 @@ export const Transmitter: React.FC<Props> = ({
           setEnvelope(null);
           setChunks([]);
           setRenderedSlotSvgs({});
-          setIsPlaying(false);
-          setHasUserStarted(false);
-          setIsCycleFinished(false);
-          setCyclesCompleted(0);
         }
       }
       return filtered;
@@ -585,16 +525,6 @@ export const Transmitter: React.FC<Props> = ({
     });
   }, []);
 
-  // Update item metadata in queue (custom label, priority, classification, etc.)
-  const handleUpdateQueueItem = useCallback((updated: QueueItem) => {
-    setQueue((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
-  }, []);
-
-  // Reorder entire queue (e.g. priority sort or drag-and-drop / promote to top)
-  const handleReorderQueue = useCallback((newQueue: QueueItem[]) => {
-    setQueue(newQueue);
-  }, []);
-
   // Helper for responsive grid columns class
   const getGridColsClass = (cols: 'auto' | 2 | 3 | 4 | 6 | 8, displayCnt: number, isWide: boolean) => {
     if (cols !== 'auto') {
@@ -623,37 +553,6 @@ export const Transmitter: React.FC<Props> = ({
   const [isPlaying, setIsPlaying] = useState<boolean>(!requireManualStartOnNewFile);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isWideMode, setIsWideMode] = useState<boolean>(false);
-
-  // Check if queue is completely empty
-  const isQueueEmpty = (queue.length === 0 && !selectedFile && (!textContent || !textContent.trim())) || chunks.length === 0;
-
-  // Halt optical playback if queue is empty
-  useEffect(() => {
-    if (queue.length === 0 && !selectedFile && (!textContent || !textContent.trim())) {
-      if (isPlaying) setIsPlaying(false);
-      if (hasUserStarted) setHasUserStarted(false);
-      setIsCycleFinished(false);
-      setCyclesCompleted(0);
-    }
-  }, [queue.length, selectedFile, textContent, isPlaying, hasUserStarted]);
-
-  // Unified Play / Pause / Replay toggle
-  const handlePlayToggle = useCallback(() => {
-    if (isQueueEmpty) return;
-    if (!hasUserStarted) {
-      setHasUserStarted(true);
-      setIsCycleFinished(false);
-      setCyclesCompleted(0);
-      setIsPlaying(true);
-    } else if (isCycleFinished) {
-      setCyclesCompleted(0);
-      setIsCycleFinished(false);
-      setCurrentPage(0);
-      setIsPlaying(true);
-    } else {
-      setIsPlaying((prev) => !prev);
-    }
-  }, [isQueueEmpty, hasUserStarted, isCycleFinished]);
 
   // High-performance windowed chunk matrix table states (prevents DOM bloat and crashes on thousands of chunks)
   const [ledgerPage, setLedgerPage] = useState<number>(0);
@@ -953,15 +852,8 @@ export const Transmitter: React.FC<Props> = ({
 
       setEnvelope(env);
 
-      // Packetize with selected encoding engine (Sequential v2 vs Fountain Zero-Sync v3)
-      let chunkList: string[] = [];
-      if (encodingMode === 'fountain') {
-        const { chunks: fChunks } = generateFountainPackets(env, effectiveChunkSize, fountainRedundancy);
-        chunkList = fChunks;
-      } else {
-        const { chunks: sChunks } = packetizeEnvelope(env, effectiveChunkSize);
-        chunkList = sChunks;
-      }
+      // Packetize with camera-optimized dynamic chunk size
+      const { chunks: chunkList } = packetizeEnvelope(env, effectiveChunkSize);
       setChunks(chunkList);
       setCurrentPage(0);
 
@@ -977,7 +869,6 @@ export const Transmitter: React.FC<Props> = ({
       // Log once per unique transferId
       if (env.transferId !== lastLoggedTransferId.current) {
         lastLoggedTransferId.current = env.transferId;
-        const activeQueueItem = queue.find((item) => item.id === activeQueueItemId);
         onLogAudit({
           id: 'tx-' + Date.now(),
           type: 'sent',
@@ -988,11 +879,6 @@ export const Transmitter: React.FC<Props> = ({
           sha256: env.hash,
           timestamp: Date.now(),
           status: 'success',
-          priority: activeQueueItem?.priority,
-          classification: activeQueueItem?.classification,
-          encodingMode,
-          chromaMode,
-          cyclesCompleted: Math.max(1, cyclesCompleted),
         });
       }
     } catch (err) {
@@ -1000,63 +886,17 @@ export const Transmitter: React.FC<Props> = ({
     } finally {
       setIsProcessing(false);
     }
-  }, [
-    inputMode, 
-    textContent, 
-    selectedFile, 
-    encryptEnabled, 
-    passphrase, 
-    effectiveChunkSize, 
-    displayCount, 
-    activeQueueItemId, 
-    encodingMode, 
-    fountainRedundancy, 
-    onLogAudit,
-    queue,
-    cyclesCompleted,
-    chromaMode
-  ]);
-
-  // Generate official Cryptographic Air-Gap Emission Certificate
-  const handleGenerateCertificate = useCallback(async () => {
-    if (!envelope) return;
-    try {
-      const cert = await createEmissionCertificate({
-        stationId: 'TX-CORE-DIODE-01',
-        stationName: 'ایستگاه فرستنده امن سامانه یکسویه سایه (SAYEH TX Station)',
-        transferId: envelope.transferId,
-        fileName: envelope.fileName,
-        fileType: envelope.fileType,
-        totalBytes: envelope.totalBytes,
-        totalFrames: chunks.length,
-        encodingMode,
-        chromaMode,
-        encryptionMode: encryptEnabled ? 'AES-256-GCM (PBKDF2-100K CSPRNG)' : 'Plaintext (Unencrypted)',
-        payloadSha256: envelope.hash,
-        envelopeHash: envelope.ciphertext ? envelope.ciphertext.substring(0, 32) : undefined,
-        cyclesCompleted: Math.max(1, cyclesCompleted),
-        shutterFps: fps,
-        displayCount,
-      });
-      setActiveCertificate(cert);
-      setIsCertModalOpen(true);
-    } catch (e) {
-      console.error('Failed to create emission certificate', e);
-    }
-  }, [envelope, chunks.length, encodingMode, chromaMode, encryptEnabled, cyclesCompleted, fps, displayCount]);
+  }, [inputMode, textContent, selectedFile, encryptEnabled, passphrase, effectiveChunkSize, displayCount, activeQueueItemId, onLogAudit]);
 
   useEffect(() => {
     generateTransfer();
   }, [generateTransfer]);
 
-  // Exact pagination logic:
-  // In RGB 3x mode, each slot transmits up to 3 chunks across Red, Green, and Blue optical wavelengths!
-  const chunksPerSlot = chromaMode === 'rgb_3x' ? 3 : 1;
-  const chunksPerPage = displayCount * chunksPerSlot;
-  const totalPages = Math.max(1, Math.ceil(chunks.length / chunksPerPage));
-  const activeChunkIndex = Math.min(Math.max(0, chunks.length - 1), currentPage * chunksPerPage);
+  // Exact pagination logic: total pages is Math.ceil(totalChunks / displayCount)
+  const totalPages = Math.max(1, Math.ceil(chunks.length / displayCount));
+  const activeChunkIndex = Math.min(Math.max(0, chunks.length - 1), currentPage * displayCount);
 
-  // If displayCount, chromaMode, or chunks change and currentPage exceeds totalPages, reset safely
+  // If displayCount or chunks change and currentPage exceeds totalPages, reset safely
   useEffect(() => {
     if (currentPage >= totalPages) {
       setCurrentPage(0);
@@ -1071,82 +911,50 @@ export const Transmitter: React.FC<Props> = ({
     }
 
     let isMounted = true;
-    const dynamicMargin = displayCount >= 4 || qrScale < 90 ? 3 : 2;
-    const dynamicEc = autoAdaptiveDensity && readabilityPreset === 'ultra' ? 'M' : errorCorrection;
+    const indicesToRender = new Set<number>();
 
-    // Slots to render for current page and next page
-    const slotsToRender: { slotKey: number; baseIdx: number }[] = [];
-
-    // Current page visible slots
-    for (let s = 0; s < displayCount; s++) {
-      const baseIdx = currentPage * chunksPerPage + s * chunksPerSlot;
-      if (baseIdx < chunks.length) {
-        slotsToRender.push({ slotKey: baseIdx, baseIdx });
-      }
+    // Current page visible chunk indices
+    for (let i = 0; i < displayCount; i++) {
+      const idx = currentPage * displayCount + i;
+      if (idx < chunks.length) indicesToRender.add(idx);
     }
 
-    // Prefetch next page slots for instantaneous zero-latency navigation
-    const nextPage = (currentPage + 1) % totalPages;
-    for (let s = 0; s < displayCount; s++) {
-      const baseIdx = nextPage * chunksPerPage + s * chunksPerSlot;
-      if (baseIdx < chunks.length) {
-        slotsToRender.push({ slotKey: baseIdx, baseIdx });
-      }
+    // Prefetch next page chunk indices for zero-latency instant transitions
+    for (let i = 0; i < displayCount; i++) {
+      const nextIdx = ((currentPage + 1) % totalPages) * displayCount + i;
+      if (nextIdx < chunks.length) indicesToRender.add(nextIdx);
     }
 
     // Also include focusedChunkIndex if zoomed
     if (focusedChunkIndex !== null && focusedChunkIndex < chunks.length) {
-      slotsToRender.push({ slotKey: focusedChunkIndex, baseIdx: focusedChunkIndex });
+      indicesToRender.add(focusedChunkIndex);
     }
 
-    const renderPromises = slotsToRender.map(async ({ slotKey, baseIdx }) => {
-      if (chromaMode === 'rgb_3x') {
-        const chunkR = chunks[baseIdx];
-        const chunkG = baseIdx + 1 < chunks.length ? chunks[baseIdx + 1] : undefined;
-        const chunkB = baseIdx + 2 < chunks.length ? chunks[baseIdx + 2] : undefined;
-        const cacheKey = `rgb_${chunkR}_${chunkG || ''}_${chunkB || ''}_${antiGlareTheme}_${dynamicMargin}_${dynamicEc}`;
-        if (svgCacheRef.current.has(cacheKey)) {
-          return { slotKey, svg: svgCacheRef.current.get(cacheKey)! };
+    const dynamicMargin = displayCount >= 4 || qrScale < 90 ? 3 : 2;
+    const dynamicEc = autoAdaptiveDensity && readabilityPreset === 'ultra' ? 'M' : errorCorrection;
+
+    const renderPromises = Array.from(indicesToRender).map(async (idx) => {
+      const chunk = chunks[idx];
+      const cacheKey = `${chunk}_${dynamicMargin}_${dynamicEc}`;
+      if (svgCacheRef.current.has(cacheKey)) {
+        return { idx, svg: svgCacheRef.current.get(cacheKey)! };
+      }
+      try {
+        const svg = await QRCode.toString(chunk, {
+          type: 'svg',
+          margin: dynamicMargin,
+          errorCorrectionLevel: dynamicEc,
+          color: { dark: '#000000', light: '#ffffff' },
+        });
+        if (svgCacheRef.current.size > 250) {
+          const firstKey = svgCacheRef.current.keys().next().value;
+          if (firstKey) svgCacheRef.current.delete(firstKey);
         }
-        try {
-          const res = await renderRgbChromaSvg(chunkR, chunkG, chunkB, {
-            theme: antiGlareTheme,
-            margin: dynamicMargin,
-            errorCorrectionLevel: dynamicEc,
-          });
-          if (svgCacheRef.current.size > 250) {
-            const firstKey = svgCacheRef.current.keys().next().value;
-            if (firstKey) svgCacheRef.current.delete(firstKey);
-          }
-          svgCacheRef.current.set(cacheKey, res.svg);
-          return { slotKey, svg: res.svg };
-        } catch (e) {
-          console.error('Failed to generate RGB Chroma SVG', e);
-          return { slotKey, svg: '' };
-        }
-      } else {
-        const chunk = chunks[baseIdx];
-        const cacheKey = `mono_${chunk}_${dynamicMargin}_${dynamicEc}`;
-        if (svgCacheRef.current.has(cacheKey)) {
-          return { slotKey, svg: svgCacheRef.current.get(cacheKey)! };
-        }
-        try {
-          const svg = await QRCode.toString(chunk, {
-            type: 'svg',
-            margin: dynamicMargin,
-            errorCorrectionLevel: dynamicEc,
-            color: { dark: '#000000', light: '#ffffff' },
-          });
-          if (svgCacheRef.current.size > 250) {
-            const firstKey = svgCacheRef.current.keys().next().value;
-            if (firstKey) svgCacheRef.current.delete(firstKey);
-          }
-          svgCacheRef.current.set(cacheKey, svg);
-          return { slotKey, svg };
-        } catch (e) {
-          console.error('Failed to generate chunk SVG', e);
-          return { slotKey, svg: '' };
-        }
+        svgCacheRef.current.set(cacheKey, svg);
+        return { idx, svg };
+      } catch (e) {
+        console.error('Failed to generate chunk SVG', e);
+        return { idx, svg: '' };
       }
     });
 
@@ -1154,7 +962,7 @@ export const Transmitter: React.FC<Props> = ({
       if (!isMounted) return;
       const next: Record<number, string> = {};
       results.forEach((r) => {
-        if (r.svg) next[r.slotKey] = r.svg;
+        if (r.svg) next[r.idx] = r.svg;
       });
       setRenderedSlotSvgs(next);
     });
@@ -1162,21 +970,7 @@ export const Transmitter: React.FC<Props> = ({
     return () => {
       isMounted = false;
     };
-  }, [
-    chunks, 
-    currentPage, 
-    displayCount, 
-    totalPages, 
-    qrScale, 
-    autoAdaptiveDensity, 
-    readabilityPreset, 
-    errorCorrection, 
-    focusedChunkIndex,
-    chromaMode,
-    antiGlareTheme,
-    chunksPerPage,
-    chunksPerSlot
-  ]);
+  }, [chunks, currentPage, displayCount, totalPages, qrScale, autoAdaptiveDensity, readabilityPreset, errorCorrection, focusedChunkIndex]);
 
   // Clean transition to next queued item with optical delay
   const triggerQueueTransition = useCallback(() => {
@@ -1201,8 +995,6 @@ export const Transmitter: React.FC<Props> = ({
       // All items completed
       setIsTransitioningQueue(false);
       isTransitioningRef.current = false;
-      setIsPlaying(false);
-      setIsCycleFinished(true);
       return;
     }
 
@@ -1217,54 +1009,25 @@ export const Transmitter: React.FC<Props> = ({
         clearInterval(intervalId);
         setIsTransitioningQueue(false);
         isTransitioningRef.current = false;
-        setCyclesCompleted(0);
-        setIsCycleFinished(false);
         handleSelectActiveItem(nextPendingItem);
         setCurrentPage(0);
       }
     }, 1000);
   }, [activeQueueItemId, queue, transitionDelaySec, handleSelectActiveItem]);
 
-  // Handle completion of a full broadcast cycle (prevent redundant loops!)
+  // Handle completion of a full broadcast cycle
   const handleCycleComplete = useCallback(() => {
-    // If cyclesPerItem is finite (e.g. 1, 2, 3, 5 loops)
-    if (cyclesPerItem > 0) {
-      setCyclesCompleted((prev) => {
-        const nextCycles = prev + 1;
-        if (nextCycles >= cyclesPerItem) {
-          // If queue auto-advance is enabled and there are other pending items:
-          if (autoAdvanceQueue && queue.length > 1) {
-            const curIdx = queue.findIndex((q) => q.id === activeQueueItemId);
-            const nextPendingItem =
-              queue.find((q, idx) => idx > curIdx && q.status === 'pending') ||
-              queue.find((q) => q.status === 'pending' && q.id !== activeQueueItemId);
+    if (!autoAdvanceQueue || queue.length <= 1) return;
 
-            if (nextPendingItem) {
-              triggerQueueTransition();
-              return 0;
-            }
-          }
-
-          // No more items or single file: Mark completed and STOP to prevent redundant loops!
-          setQueue((prevQueue) =>
-            prevQueue.map((item) =>
-              item.id === activeQueueItemId ? { ...item, status: 'completed' as const } : item
-            )
-          );
-          setIsPlaying(false);
-          setIsCycleFinished(true);
-          return nextCycles;
-        }
-        return nextCycles;
-      });
-    } else {
-      // Infinite loop mode (cyclesPerItem === 0):
-      // Transition to next queued item if auto-advance is enabled
-      if (autoAdvanceQueue && queue.length > 1) {
+    setCyclesCompleted((prev) => {
+      const nextCycles = prev + 1;
+      if (nextCycles >= cyclesPerItem) {
         triggerQueueTransition();
+        return 0;
       }
-    }
-  }, [cyclesPerItem, autoAdvanceQueue, queue, activeQueueItemId, triggerQueueTransition]);
+      return nextCycles;
+    });
+  }, [autoAdvanceQueue, queue.length, cyclesPerItem, triggerQueueTransition]);
 
   // Carousel timer loop with camera shutter speed sync: advances PAGE BY PAGE.
   useEffect(() => {
@@ -1364,37 +1127,16 @@ export const Transmitter: React.FC<Props> = ({
     slotIndex: number;
     chunkIndex: number;
     hasChunk: boolean;
-    chunkIndexR?: number;
-    chunkIndexG?: number;
-    chunkIndexB?: number;
-    channelCount?: 1 | 2 | 3;
   }
 
   const slots: DisplaySlot[] = [];
   for (let i = 0; i < displayCount; i++) {
-    if (chromaMode === 'rgb_3x') {
-      const baseIdx = currentPage * chunksPerPage + i * 3;
-      const hasChunk = baseIdx < chunks.length;
-      const hasG = baseIdx + 1 < chunks.length;
-      const hasB = baseIdx + 2 < chunks.length;
-      const count: 1 | 2 | 3 = hasB ? 3 : hasG ? 2 : 1;
-      slots.push({
-        slotIndex: i,
-        chunkIndex: baseIdx,
-        hasChunk,
-        chunkIndexR: baseIdx,
-        chunkIndexG: hasG ? baseIdx + 1 : undefined,
-        chunkIndexB: hasB ? baseIdx + 2 : undefined,
-        channelCount: count,
-      });
-    } else {
-      const cIdx = currentPage * displayCount + i;
-      slots.push({
-        slotIndex: i,
-        chunkIndex: cIdx,
-        hasChunk: cIdx < chunks.length,
-      });
-    }
+    const cIdx = currentPage * displayCount + i;
+    slots.push({
+      slotIndex: i,
+      chunkIndex: cIdx,
+      hasChunk: cIdx < chunks.length,
+    });
   }
 
   const visibleIndices: number[] = slots.filter((s) => s.hasChunk).map((s) => s.chunkIndex);
@@ -1507,7 +1249,6 @@ export const Transmitter: React.FC<Props> = ({
               chunkSize={chunkSize}
               autoAdaptiveDensity={autoAdaptiveDensity}
               cyclesPerItem={cyclesPerItem}
-              chromaMode={chromaMode}
               lang={lang}
               onApplyTuning={(newFps, newDisplayCount) => {
                 setFps(newFps);
@@ -1546,8 +1287,6 @@ export const Transmitter: React.FC<Props> = ({
             fps={fps}
             displayCount={displayCount}
             chunkSize={chunkSize}
-            onUpdateItem={handleUpdateQueueItem}
-            onReorderQueue={handleReorderQueue}
           />
 
           {/* Cryptography & AES-256 Card */}
@@ -2015,170 +1754,6 @@ export const Transmitter: React.FC<Props> = ({
                   </span>
                 </div>
               </div>
-
-              {/* 5. انتخاب الگوریتم کدگذاری نوری (Phase 1: Sequential Standard vs Fountain Zero-Sync) */}
-              <div className="pt-2.5 mt-2.5 border-t border-slate-200 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                    <span>{lang === 'fa' ? 'الگوریتم کدگذاری نوری:' : 'Optical Encoding Engine:'}</span>
-                  </span>
-
-                  <div className="flex items-center p-0.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs shadow-2xs">
-                    <button
-                      type="button"
-                      onClick={() => setEncodingMode('sequential')}
-                      className={`px-3 py-1 rounded-lg transition cursor-pointer font-bold flex items-center gap-1.5 ${
-                        encodingMode === 'sequential'
-                          ? 'bg-cyan-600 text-white shadow-xs'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                      title={lang === 'fa' ? 'کدگذاری ترتیبی قطعات ۱ تا N با چکسام مستقل CRC32 برای هر فریم' : 'Standard sequential chunk packets'}
-                    >
-                      <span>⚡ {lang === 'fa' ? 'ترتیبی استاندارد (v2)' : 'Sequential (v2)'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setEncodingMode('fountain')}
-                      className={`px-3 py-1 rounded-lg transition cursor-pointer font-bold flex items-center gap-1.5 ${
-                        encodingMode === 'fountain'
-                          ? 'bg-purple-600 text-white shadow-xs'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                      title={lang === 'fa' ? 'کدهای فواره‌ای بدون وابستگی به فریم آغازین؛ دریافت هر ۴۰ فریم دلخواه برای بازسازی کامل کافیست' : 'Fountain anti-drop code packets with Zero-Sync'}
-                    >
-                      <span>⛲ {lang === 'fa' ? 'کدهای فواره‌ای ضد ریزش (v3)' : 'Fountain Zero-Sync (v3)'}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {encodingMode === 'fountain' && (
-                  <div className="flex items-center gap-1.5 animate-in fade-in">
-                    <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                      {lang === 'fa' ? 'افزونگی فریم‌های تعمیر (Parity):' : 'Parity redundancy:'}
-                    </span>
-                    <div className="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-mono">
-                      {[
-                        { ratio: 0.3, label: '+30%' },
-                        { ratio: 0.4, label: '+40%' },
-                        { ratio: 0.6, label: '+60%' },
-                      ].map((item) => (
-                        <button
-                          key={item.ratio}
-                          type="button"
-                          onClick={() => setFountainRedundancy(item.ratio)}
-                          className={`px-2 py-0.5 rounded-md font-bold transition cursor-pointer ${
-                            fountainRedundancy === item.ratio
-                              ? 'bg-purple-500 text-white shadow-xs'
-                              : 'text-slate-500 dark:text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 6. انتخاب مدل کانال نوری و مالتی‌پلکس رنگی (Phase 2: RGB Chroma-Multiplexing 3x vs Standard Mono) */}
-              <div className="pt-2.5 mt-2.5 border-t border-slate-200 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                    <Palette className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-                    <span>{lang === 'fa' ? 'کانال نوری و مالتی‌پلکس:' : 'Optical Channel & Multiplexing:'}</span>
-                  </span>
-
-                  <div className="flex items-center p-0.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs shadow-2xs">
-                    <button
-                      type="button"
-                      onClick={() => setChromaMode('mono')}
-                      className={`px-3 py-1 rounded-lg transition cursor-pointer font-bold flex items-center gap-1.5 ${
-                        chromaMode === 'mono'
-                          ? 'bg-slate-800 text-white shadow-xs'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                      title={lang === 'fa' ? 'ارسال تک‌کاناله سیاه‌وسفید استاندارد با سازگاری ۱۰۰٪ با تمامی دوربین‌ها' : 'Standard 1-channel monochrome'}
-                    >
-                      <span>⚡ {lang === 'fa' ? 'تک‌رنگ (BW 1x)' : 'Mono (1x)'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setChromaMode('rgb_3x')}
-                      className={`px-3 py-1 rounded-lg transition cursor-pointer font-bold flex items-center gap-1.5 ${
-                        chromaMode === 'rgb_3x'
-                          ? 'bg-gradient-to-r from-red-600 via-emerald-600 to-blue-600 text-white shadow-xs font-black'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                      title={lang === 'fa' ? 'مالتی‌پلکس همزمان ۳ کیوآرکد در کانال‌های رنگی R, G, B جهت ۳ برابر کردن پهنای باند نوری' : 'Simultaneous 3x RGB optical multiplexing'}
-                    >
-                      <span>🌈 {lang === 'fa' ? 'سه‌رنگ نوری (RGB 3x)' : 'RGB Chroma (3x)'}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {chromaMode === 'rgb_3x' && (
-                  <div className="flex flex-wrap items-center gap-2 animate-in fade-in">
-                    <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1">
-                      <Sun className="w-3.5 h-3.5 text-amber-500" />
-                      <span>{lang === 'fa' ? 'کالیبراسیون ضد بازتاب:' : 'Anti-Glare Tone:'}</span>
-                    </span>
-                    <div className="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-mono">
-                      {[
-                        { id: 'additive_dark' as const, labelFa: 'تیره اشباع', labelEn: 'Dark' },
-                        { id: 'subtractive_light' as const, labelFa: 'روشن CMY', labelEn: 'Light' },
-                        { id: 'anti_glare' as const, labelFa: 'فسفری ضد بازتاب', labelEn: 'Anti-Glare' },
-                      ].map((t) => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          onClick={() => setAntiGlareTheme(t.id)}
-                          className={`px-2 py-0.5 rounded-md font-bold text-[10px] transition cursor-pointer ${
-                            antiGlareTheme === t.id
-                              ? 'bg-cyan-600 text-white shadow-xs'
-                              : 'text-slate-500 dark:text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          {lang === 'fa' ? t.labelFa : t.labelEn}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Live RGB Optical Wavelength Telemetry Banner */}
-              {chromaMode === 'rgb_3x' && (
-                <div className="mt-2.5 p-2.5 rounded-xl bg-gradient-to-r from-red-950/20 via-green-950/20 to-blue-950/20 border border-cyan-500/30 flex flex-wrap items-center justify-between gap-2 text-[11px] animate-in fade-in select-none">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-bold text-cyan-800 dark:text-cyan-300 flex items-center gap-1">
-                      <Zap className="w-3.5 h-3.5 text-cyan-500 animate-pulse" />
-                      <span>{lang === 'fa' ? 'طیف‌های نوری فعال:' : 'Active Optical Wavelengths:'}</span>
-                    </span>
-
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-mono text-[10px] font-bold bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
-                      🔴 R: 650nm ({lang === 'fa' ? 'کانال ۱' : 'Ch 1'})
-                    </span>
-
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-mono text-[10px] font-bold bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping" />
-                      🟢 G: 532nm ({lang === 'fa' ? 'کانال ۲' : 'Ch 2'})
-                    </span>
-
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-mono text-[10px] font-bold bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
-                      🔵 B: 450nm ({lang === 'fa' ? 'کانال ۳' : 'Ch 3'})
-                    </span>
-                  </div>
-
-                  <span className="font-mono text-[10px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 px-2 py-0.5 rounded-md border border-emerald-400 dark:border-emerald-700">
-                    ⚡ {lang === 'fa' ? '۳۰۰٪ پهنای باند نوری (۳ بسته در هر فریم)' : '300% Optical Bandwidth (3 pkts/frame)'}
-                  </span>
-                </div>
-              )}
             </div>
 
             {/* QR Card Container: Scaled dynamically based on qrScale and matrixWidth */}
@@ -2195,7 +1770,7 @@ export const Transmitter: React.FC<Props> = ({
               className="w-full mx-auto transition-all duration-200 flex flex-col items-center justify-center"
             >
               {/* Manual User Start Confirmation Gate */}
-              {chunks.length > 0 && !hasUserStarted && !isQueueEmpty && (
+              {chunks.length > 0 && !hasUserStarted && (
                 <div className="w-full mb-3.5 p-3 sm:p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-300 dark:border-emerald-700/80 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in select-none">
                   <div className="flex items-center gap-2.5 text-center sm:text-start min-w-0">
                     <div className="p-2 rounded-xl bg-emerald-600 text-white shadow-xs shrink-0">
@@ -2210,64 +1785,23 @@ export const Transmitter: React.FC<Props> = ({
                       </h4>
                       <p className="text-[11px] font-semibold text-slate-800 dark:text-slate-300 mt-0.5">
                         {lang === 'fa'
-                          ? 'صف آماده شد. برای آغاز چرخش فریم‌های کیوآرکد و مخابره به گیرنده، بر روی دکمه شروع فرآیند کلیک نمایید.'
-                          : 'Queue loaded. Click the button to initiate optical frame cycling and transmission.'}
+                          ? 'برای آغاز چرخش فریم‌های کیوآرکد و مخابره به گیرنده، بر روی دکمه شروع فرآیند کلیک نمایید.'
+                          : 'Click the button to initiate optical frame cycling and transmission.'}
                       </p>
                     </div>
                   </div>
 
                   <button
                     type="button"
-                    onClick={handlePlayToggle}
+                    onClick={() => {
+                      setHasUserStarted(true);
+                      setIsPlaying(true);
+                    }}
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md hover:scale-105 active:scale-95 transition cursor-pointer shrink-0"
                   >
                     <Play className="w-3.5 h-3.5 fill-current" />
                     <span>{lang === 'fa' ? 'شروع فرآیند ارسال نوری' : 'Start Transmission'}</span>
                   </button>
-                </div>
-              )}
-
-              {/* Finished Broadcast Notice (Prevent Redundant Looping) */}
-              {chunks.length > 0 && isCycleFinished && !isQueueEmpty && (
-                <div className="w-full mb-3.5 p-3 sm:p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-700/80 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in select-none">
-                  <div className="flex items-center gap-2.5 text-center sm:text-start min-w-0">
-                    <div className="p-2 rounded-xl bg-emerald-600 text-white shadow-xs shrink-0">
-                      <CheckCircle2 className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="text-xs sm:text-sm font-black text-emerald-950 dark:text-emerald-200 flex flex-wrap items-center justify-center sm:justify-start gap-1.5">
-                        <span>{lang === 'fa' ? 'مخابره چرخه به پایان رسید (ارسال متوقف شد)' : 'Broadcast Completed (Stopped)'}</span>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full font-bold bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-600">
-                          {cyclesCompleted} {lang === 'fa' ? 'دور کامل' : 'Cycles'}
-                        </span>
-                      </h4>
-                      <p className="text-[11px] font-medium text-emerald-900 dark:text-emerald-300 mt-0.5">
-                        {lang === 'fa'
-                          ? 'چرخه پخش طبق سقف تنظیمی به اتمام رسید و برای جلوگیری از انتشار بیهوده داده‌ها متوقف گردید.'
-                          : 'Transmission completed all scheduled cycles and stopped to prevent redundant emission.'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={handleGenerateCertificate}
-                      className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-md hover:scale-105 active:scale-95 transition cursor-pointer"
-                    >
-                      <Award className="w-4 h-4 text-slate-950" />
-                      <span>{lang === 'fa' ? 'مشاهده و صدور گواهی رسمی تابش نوری' : 'View Emission Certificate'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handlePlayToggle}
-                      className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md hover:scale-105 active:scale-95 transition cursor-pointer"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>{lang === 'fa' ? 'تکرار مجدد ارسال' : 'Replay Broadcast'}</span>
-                    </button>
-                  </div>
                 </div>
               )}
               {chunks.length === 0 ? (
@@ -2308,49 +1842,19 @@ export const Transmitter: React.FC<Props> = ({
                     width: `${Math.round(380 * (qrScale / 100))}px`,
                     maxWidth: '96vw',
                   }}
-                  className={`relative p-5 sm:p-6 rounded-2xl ${
-                    chromaMode === 'rgb_3x' && antiGlareTheme !== 'subtractive_light'
-                      ? 'bg-[#050811] border-4 border-cyan-800/80 shadow-[0_0_60px_rgba(6,182,212,0.2)]'
-                      : 'bg-white border-4 border-slate-300 dark:border-slate-700 shadow-2xl'
-                  } flex flex-col items-center justify-between aspect-square transition-all duration-200 overflow-hidden`}
+                  className="relative p-5 sm:p-6 rounded-2xl bg-white shadow-2xl flex items-center justify-center aspect-square border-4 border-slate-300 dark:border-slate-700 transition-all duration-200 overflow-hidden"
                 >
-                  {/* Dedicated channel bar in single view */}
-                  {chromaMode === 'rgb_3x' && (
-                    <div className="w-full shrink-0 flex items-center justify-between pb-1.5 mb-1 px-1 text-[10px] font-mono border-b border-slate-800/80 select-none">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold bg-red-500/20 text-red-400 border border-red-500/40 px-1.5 py-0.5 rounded text-[10px]">
-                          🔴 R:#{activeChunkIndex + 1}
-                        </span>
-                        {activeChunkIndex + 1 < chunks.length && (
-                          <span className="font-bold bg-green-500/20 text-green-400 border border-green-500/40 px-1.5 py-0.5 rounded text-[10px]">
-                            🟢 G:#{activeChunkIndex + 2}
-                          </span>
-                        )}
-                        {activeChunkIndex + 2 < chunks.length && (
-                          <span className="font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40 px-1.5 py-0.5 rounded text-[10px]">
-                            🔵 B:#{activeChunkIndex + 3}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[10px] font-bold text-cyan-400 font-mono">
-                        RGB 3X
-                      </span>
+                  {renderedSlotSvgs[activeChunkIndex] ? (
+                    <div
+                      className="w-full h-full min-h-0 min-w-0 flex items-center justify-center select-none [&>svg]:max-w-full [&>svg]:max-h-full [&>svg]:w-auto [&>svg]:h-auto [&>svg]:aspect-square [&>svg]:object-contain [&>svg]:block [&>svg]:m-auto"
+                      dangerouslySetInnerHTML={{ __html: renderedSlotSvgs[activeChunkIndex] }}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-slate-500 text-xs font-mono">
+                      <RefreshCw className="w-8 h-8 animate-spin mb-2 text-emerald-600 dark:text-emerald-400" />
+                      <span>Generating QR...</span>
                     </div>
                   )}
-
-                  <div className="w-full flex-1 min-h-0 min-w-0 flex items-center justify-center overflow-hidden">
-                    {renderedSlotSvgs[activeChunkIndex] ? (
-                      <div
-                        className="w-full h-full min-h-0 min-w-0 flex items-center justify-center select-none [&>svg]:max-w-full [&>svg]:max-h-full [&>svg]:w-auto [&>svg]:h-auto [&>svg]:aspect-square [&>svg]:object-contain [&>svg]:block [&>svg]:m-auto"
-                        dangerouslySetInnerHTML={{ __html: renderedSlotSvgs[activeChunkIndex] }}
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center text-slate-500 text-xs font-mono">
-                        <RefreshCw className="w-8 h-8 animate-spin mb-2 text-emerald-600 dark:text-emerald-400" />
-                        <span>Generating {chromaMode === 'rgb_3x' ? 'RGB Chroma' : ''} QR...</span>
-                      </div>
-                    )}
-                  </div>
 
                   <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-emerald-500 pointer-events-none" />
                   <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-emerald-500 pointer-events-none" />
@@ -2367,43 +1871,21 @@ export const Transmitter: React.FC<Props> = ({
                       <div
                         key={slot.chunkIndex}
                         onClick={() => setFocusedChunkIndex(slot.chunkIndex)}
-                        className={`group relative p-1.5 sm:p-2 rounded-2xl ${
-                          chromaMode === 'rgb_3x' && antiGlareTheme !== 'subtractive_light'
-                            ? 'bg-[#050811] border-2 border-cyan-800/80 shadow-md hover:border-cyan-400'
-                            : 'bg-white border-2 border-slate-300 dark:border-slate-700 shadow-md hover:border-emerald-500'
-                        } flex flex-col items-center justify-between aspect-square transition-all hover:shadow-xl hover:scale-[1.02] cursor-pointer overflow-hidden`}
+                        className="group relative p-1.5 sm:p-2 rounded-2xl bg-white shadow-md flex flex-col items-center justify-between aspect-square border-2 border-slate-300 dark:border-slate-700 transition-all hover:border-emerald-500 hover:shadow-xl hover:scale-[1.02] cursor-pointer overflow-hidden"
                         title={lang === 'fa' ? `کلیک برای فوکوس و بزرگ‌نمایی فریم #${slot.chunkIndex + 1}` : `Click to zoom & focus frame #${slot.chunkIndex + 1}`}
                       >
                         {/* Dedicated mini header bar above QR: zero overlap with QR quiet zone */}
-                        <div className="w-full shrink-0 flex items-center justify-between pb-0.5 px-1 text-[9px] sm:text-[10px] font-mono text-slate-700 dark:text-slate-300 border-b border-slate-100 dark:border-slate-800 select-none">
-                          {chromaMode === 'rgb_3x' ? (
-                            <div className="flex items-center gap-1 font-mono text-[9px]">
-                              <span className="font-bold bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 px-1 py-0.2 rounded">
-                                R:{slot.chunkIndexR !== undefined ? slot.chunkIndexR + 1 : '-'}
-                              </span>
-                              {slot.chunkIndexG !== undefined && (
-                                <span className="font-bold bg-green-500/20 text-green-600 dark:text-green-400 border border-green-500/30 px-1 py-0.2 rounded">
-                                  G:{slot.chunkIndexG + 1}
-                                </span>
-                              )}
-                              {slot.chunkIndexB !== undefined && (
-                                <span className="font-bold bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 px-1 py-0.2 rounded">
-                                  B:{slot.chunkIndexB + 1}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="font-bold bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded text-slate-900">
-                              #{slot.chunkIndex + 1}
-                            </span>
-                          )}
+                        <div className="w-full shrink-0 flex items-center justify-between pb-0.5 px-1 text-[9px] sm:text-[10px] font-mono text-slate-700 border-b border-slate-100 select-none">
+                          <span className="font-bold bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded text-slate-900">
+                            #{slot.chunkIndex + 1}
+                          </span>
                           <span className="hidden sm:inline-flex items-center gap-0.5 text-[8px] text-emerald-700 group-hover:text-emerald-800 font-sans font-semibold">
                             <Focus className="w-2.5 h-2.5" />
                             <span>{lang === 'fa' ? 'فوکوس' : 'Focus'}</span>
                           </span>
                         </div>
 
-                        {/* Unobstructed QR Matrix */}
+                        {/* Unobstructed Pure White QR Matrix */}
                         <div className="w-full flex-1 min-h-0 min-w-0 flex items-center justify-center p-1 sm:p-1.5 overflow-hidden select-none">
                           {renderedSlotSvgs[slot.chunkIndex] && (
                             <div
@@ -2445,34 +1927,6 @@ export const Transmitter: React.FC<Props> = ({
                 </span>
 
                 <div className="flex items-center gap-2">
-                  {/* Broadcast Loop Indicator */}
-                  {chunks.length > 0 && !isQueueEmpty && (
-                    <span 
-                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-mono text-[11px] font-bold border transition-colors ${
-                        isCycleFinished
-                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-400 dark:border-emerald-700'
-                          : 'bg-cyan-50 dark:bg-cyan-950/80 text-cyan-800 dark:text-cyan-300 border-cyan-300 dark:border-cyan-700'
-                      }`}
-                      title={lang === 'fa' ? 'تعداد دورهای پخش تعیین‌شده و انجام‌شده برای این سند' : 'Broadcast loops completed'}
-                    >
-                      {isCycleFinished ? (
-                        <>
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                          <span>{lang === 'fa' ? 'پایان مخابره چرخه' : 'Finished (Stopped)'}</span>
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw className={`w-3 h-3 ${isPlaying ? 'animate-spin' : ''}`} />
-                          <span>
-                            {lang === 'fa' 
-                              ? `دور ${Math.min(cyclesCompleted + 1, cyclesPerItem > 0 ? cyclesPerItem : 999)} از ${cyclesPerItem > 0 ? `${cyclesPerItem} دور` : 'بی‌نهایت'}` 
-                              : `Cycle ${Math.min(cyclesCompleted + 1, cyclesPerItem > 0 ? cyclesPerItem : 999)} of ${cyclesPerItem > 0 ? cyclesPerItem : '∞'}`}
-                          </span>
-                        </>
-                      )}
-                    </span>
-                  )}
-
                   {chunks.length > 0 && isPlaying && (
                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-mono text-[11px] font-bold bg-amber-50 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 animate-pulse" title={lang === 'fa' ? 'زمان تخمینی باقیمانده تا پایان دور فعلی' : 'Current loop remaining time'}>
                       <Clock className="w-3 h-3 text-amber-500" />
@@ -2483,8 +1937,8 @@ export const Transmitter: React.FC<Props> = ({
                   <span className="text-emerald-700 dark:text-emerald-400 font-black text-sm">
                     {chunks.length > 0
                       ? lang === 'fa'
-                        ? `صفحه ${currentPage + 1} از ${totalPages} (قطعات ${currentPage * chunksPerPage + 1} تا ${Math.min((currentPage + 1) * chunksPerPage, chunks.length)} از ${chunks.length})${chromaMode === 'rgb_3x' ? ' • 🌈 سه‌رنگ' : ''}`
-                        : `Page ${currentPage + 1} of ${totalPages} (Chunks ${currentPage * chunksPerPage + 1}–${Math.min((currentPage + 1) * chunksPerPage, chunks.length)} of ${chunks.length})${chromaMode === 'rgb_3x' ? ' • 🌈 RGB 3x' : ''}`
+                        ? `صفحه ${currentPage + 1} از ${totalPages} (قطعات ${currentPage * displayCount + 1} تا ${Math.min((currentPage + 1) * displayCount, chunks.length)} از ${chunks.length})`
+                        : `Page ${currentPage + 1} of ${totalPages} (Chunks ${currentPage * displayCount + 1}–${Math.min((currentPage + 1) * displayCount, chunks.length)} of ${chunks.length})`
                       : '0 / 0'}
                   </span>
                 </div>
@@ -2503,59 +1957,36 @@ export const Transmitter: React.FC<Props> = ({
               {/* Primary Playback & Frame Navigation Controls (کاملاً در مرکز صفحه) */}
               <div className="flex items-center justify-center gap-3 pt-3">
                 <button
-                  type="button"
                   onClick={() => {
-                    if (isQueueEmpty) return;
                     setCurrentPage((prev) => (prev + 1) % totalPages);
                   }}
-                  disabled={isQueueEmpty || isProcessing || isTransitioningQueue}
-                  className="p-3 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-700 dark:text-white transition cursor-pointer shadow-xs hover:scale-105 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
-                  title={isQueueEmpty ? (lang === 'fa' ? 'صف ارسال در حال حاضر خالی است' : 'Queue is empty') : (lang === 'fa' ? 'فریم بعدی' : 'Next Frame')}
+                  className="p-3 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-700 dark:text-white transition cursor-pointer shadow-xs hover:scale-105 active:scale-95"
+                  title={lang === 'fa' ? 'فریم بعدی' : 'Next Frame'}
                 >
                   <SkipForward className="w-5 h-5" />
                 </button>
 
                 <button
-                  type="button"
-                  onClick={handlePlayToggle}
-                  disabled={isQueueEmpty || isProcessing || isTransitioningQueue}
-                  className={`px-8 py-3 rounded-2xl flex items-center justify-center gap-2.5 text-sm font-bold transition shadow-md ${
-                    isQueueEmpty
-                      ? 'bg-slate-300 text-slate-500 dark:bg-slate-800 dark:text-slate-500 opacity-50 cursor-not-allowed pointer-events-none'
-                      : !hasUserStarted
-                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/20 ring-4 ring-emerald-500/30 animate-pulse cursor-pointer hover:scale-105 active:scale-95'
-                      : isCycleFinished
-                      ? 'bg-teal-600 hover:bg-teal-500 text-white shadow-teal-950/20 cursor-pointer hover:scale-105 active:scale-95'
+                  onClick={() => {
+                    if (!hasUserStarted) {
+                      setHasUserStarted(true);
+                      setIsPlaying(true);
+                    } else {
+                      setIsPlaying(!isPlaying);
+                    }
+                  }}
+                  className={`px-8 py-3 rounded-2xl flex items-center justify-center gap-2.5 text-sm font-bold transition cursor-pointer shadow-md hover:scale-105 active:scale-95 ${
+                    !hasUserStarted
+                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/20 ring-4 ring-emerald-500/30 animate-pulse'
                       : isPlaying
-                      ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-950/20 cursor-pointer hover:scale-105 active:scale-95'
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/20 cursor-pointer hover:scale-105 active:scale-95'
+                      ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-950/20'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/20'
                   }`}
-                  title={
-                    isQueueEmpty
-                      ? (lang === 'fa' ? 'صف ارسال در حال حاضر خالی است - ابتدا فایلی را بارگذاری کنید' : 'Transmission queue is empty - load payload first')
-                      : !hasUserStarted
-                      ? (lang === 'fa' ? 'شروع فرآیند ارسال نوری' : 'Start Transmission')
-                      : isCycleFinished
-                      ? (lang === 'fa' ? 'تکرار چرخه ارسال نوری' : 'Replay Broadcast Cycle')
-                      : isPlaying
-                      ? (lang === 'fa' ? 'توقف موقت ارسال' : 'Pause Transmission')
-                      : (lang === 'fa' ? 'ادامه ارسال نوری' : 'Resume Transmission')
-                  }
                 >
-                  {isQueueEmpty ? (
-                    <>
-                      <Inbox className="w-5 h-5" />
-                      <span>{lang === 'fa' ? 'صف خالی است' : 'Queue Empty'}</span>
-                    </>
-                  ) : !hasUserStarted ? (
+                  {!hasUserStarted ? (
                     <>
                       <Play className="w-5 h-5 fill-current" />
                       <span className="text-white font-bold">{lang === 'fa' ? 'شروع فرآیند ارسال' : 'Start Transmission'}</span>
-                    </>
-                  ) : isCycleFinished ? (
-                    <>
-                      <RotateCcw className="w-5 h-5" />
-                      <span className="text-white font-bold">{lang === 'fa' ? 'تکرار چرخه ارسال' : 'Replay Cycle'}</span>
                     </>
                   ) : isPlaying ? (
                     <>
@@ -2571,14 +2002,11 @@ export const Transmitter: React.FC<Props> = ({
                 </button>
 
                 <button
-                  type="button"
                   onClick={() => {
-                    if (isQueueEmpty) return;
                     setCurrentPage((prev) => (prev > 0 ? prev - 1 : totalPages - 1));
                   }}
-                  disabled={isQueueEmpty || isProcessing || isTransitioningQueue}
-                  className="p-3 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-700 dark:text-white transition cursor-pointer shadow-xs hover:scale-105 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
-                  title={isQueueEmpty ? (lang === 'fa' ? 'صف ارسال در حال حاضر خالی است' : 'Queue is empty') : (lang === 'fa' ? 'فریم قبلی' : 'Previous Frame')}
+                  className="p-3 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-700 dark:text-white transition cursor-pointer shadow-xs hover:scale-105 active:scale-95"
+                  title={lang === 'fa' ? 'فریم قبلی' : 'Previous Frame'}
                 >
                   <SkipBack className="w-5 h-5" />
                 </button>
@@ -2587,20 +2015,16 @@ export const Transmitter: React.FC<Props> = ({
               {/* Utility Action Buttons (Copy, Download, Test in Receiver) */}
               <div className="flex flex-wrap items-center justify-center gap-2 pt-2 border-t border-slate-200/70 dark:border-slate-800/70">
                 <button
-                  type="button"
                   onClick={handleCopyRaw}
-                  disabled={isQueueEmpty}
-                  className="inline-flex items-center justify-center h-9 w-9 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-700 dark:text-white text-xs transition cursor-pointer shadow-xs shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
+                  className="inline-flex items-center justify-center h-9 w-9 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-700 dark:text-white text-xs transition cursor-pointer shadow-xs shrink-0"
                   title={lang === 'fa' ? 'کپی رشته متنی کیوآرکد فعلی' : 'Copy current QR wire text'}
                 >
                   {copiedRaw ? <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" /> : <Copy className="w-4 h-4 shrink-0" />}
                 </button>
 
                 <button
-                  type="button"
                   onClick={handleDownloadQrPng}
-                  disabled={isQueueEmpty}
-                  className="inline-flex items-center justify-center gap-1.5 h-9 px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-700 dark:text-white text-xs transition cursor-pointer shadow-xs whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
+                  className="inline-flex items-center justify-center gap-1.5 h-9 px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-700 dark:text-white text-xs transition cursor-pointer shadow-xs whitespace-nowrap"
                   title={lang === 'fa' ? 'ذخیره فریم به عنوان فایل تصویر PNG' : 'Save frame as PNG image'}
                 >
                   <Download className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
@@ -2608,25 +2032,12 @@ export const Transmitter: React.FC<Props> = ({
                 </button>
 
                 <button
-                  type="button"
                   onClick={handleDownloadQrSvg}
-                  disabled={isQueueEmpty}
-                  className="inline-flex items-center justify-center gap-1.5 h-9 px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-700 dark:text-white text-xs transition cursor-pointer shadow-xs whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
+                  className="inline-flex items-center justify-center gap-1.5 h-9 px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-700 dark:text-white text-xs transition cursor-pointer shadow-xs whitespace-nowrap"
                   title={lang === 'fa' ? 'ذخیره فریم به عنوان فایل برداری SVG' : 'Save frame as vector SVG'}
                 >
                   <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   <span>{lang === 'fa' ? 'دانلود SVG' : 'SVG'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleGenerateCertificate}
-                  disabled={isQueueEmpty || !envelope}
-                  className="inline-flex items-center justify-center gap-1.5 h-9 px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-950 dark:bg-amber-950/60 dark:hover:bg-amber-900/80 dark:text-amber-200 border border-amber-300 dark:border-amber-700 font-bold text-xs transition cursor-pointer shadow-xs whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
-                  title={lang === 'fa' ? 'صدور و مشاهده گواهی دیجیتال امضاشده تابش نوری' : 'Official Air-Gap Emission Certificate'}
-                >
-                  <Award className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <span>{lang === 'fa' ? 'گواهی تابش نوری' : 'Emission Proof'}</span>
                 </button>
               </div>
             </div>
@@ -3269,62 +2680,20 @@ export const Transmitter: React.FC<Props> = ({
                       key={slot.chunkIndex}
                       onClick={() => setFocusedChunkIndex(slot.chunkIndex)}
                       className={`relative w-full h-full aspect-square ${
-                        chromaMode === 'rgb_3x' && antiGlareTheme !== 'subtractive_light'
-                          ? (displayCount === 1 
-                              ? 'p-4 sm:p-8 rounded-3xl bg-[#050811] shadow-[0_0_120px_rgba(6,182,212,0.3)] border-4 border-cyan-700' 
-                              : 'p-1.5 sm:p-2.5 rounded-2xl bg-[#050811] shadow-2xl border-2 border-cyan-800')
-                          : (displayCount === 1 
-                              ? 'p-4 sm:p-8 rounded-3xl bg-white shadow-[0_0_120px_rgba(16,185,129,0.35)] border-4 border-slate-700' 
-                              : 'p-1.5 sm:p-2.5 rounded-2xl bg-white shadow-2xl border-2 border-slate-700')
-                      } flex flex-col items-center justify-between transition-all hover:border-cyan-400 cursor-pointer select-none group overflow-hidden`}
+                        displayCount === 1 
+                          ? 'p-4 sm:p-8 rounded-3xl bg-white shadow-[0_0_120px_rgba(16,185,129,0.35)] border-4 border-slate-700' 
+                          : 'p-1.5 sm:p-2.5 rounded-2xl bg-white shadow-2xl border-2 border-slate-700'
+                      } flex flex-col items-center justify-between transition-all hover:border-emerald-500 cursor-pointer select-none group overflow-hidden`}
                       title={lang === 'fa' ? `فریم #${slot.chunkIndex + 1} (کلیک برای فوکوس)` : `Frame #${slot.chunkIndex + 1} (Click to focus)`}
                     >
                       {displayCount > 1 && (
-                        <div className="w-full shrink-0 flex items-center justify-between pb-0.5 px-1 text-[10px] sm:text-xs font-mono text-slate-700 dark:text-slate-300 border-b border-slate-100 dark:border-slate-800 select-none">
-                          {chromaMode === 'rgb_3x' ? (
-                            <div className="flex items-center gap-1 font-mono text-[9px]">
-                              <span className="font-bold bg-red-500/20 text-red-400 border border-red-500/30 px-1 py-0.2 rounded">
-                                R:{slot.chunkIndexR !== undefined ? slot.chunkIndexR + 1 : '-'}
-                              </span>
-                              {slot.chunkIndexG !== undefined && (
-                                <span className="font-bold bg-green-500/20 text-green-400 border border-green-500/30 px-1 py-0.2 rounded">
-                                  G:{slot.chunkIndexG + 1}
-                                </span>
-                              )}
-                              {slot.chunkIndexB !== undefined && (
-                                <span className="font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30 px-1 py-0.2 rounded">
-                                  B:{slot.chunkIndexB + 1}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="font-bold bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded text-slate-900 shadow-2xs">
-                              #{slot.chunkIndex + 1}
-                            </span>
-                          )}
+                        <div className="w-full shrink-0 flex items-center justify-between pb-0.5 px-1 text-[10px] sm:text-xs font-mono text-slate-700 border-b border-slate-100 select-none">
+                          <span className="font-bold bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded text-slate-900 shadow-2xs">
+                            #{slot.chunkIndex + 1}
+                          </span>
                           <span className="text-[9px] text-slate-500 font-sans font-medium">
                             {slot.chunkIndex + 1}/{chunks.length}
                           </span>
-                        </div>
-                      )}
-                      {displayCount === 1 && chromaMode === 'rgb_3x' && (
-                        <div className="w-full shrink-0 flex items-center justify-between pb-1 px-2 text-xs font-mono border-b border-slate-800 select-none">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold bg-red-500/20 text-red-400 border border-red-500/40 px-2 py-0.5 rounded text-xs">
-                              🔴 R:#{activeChunkIndex + 1}
-                            </span>
-                            {activeChunkIndex + 1 < chunks.length && (
-                              <span className="font-bold bg-green-500/20 text-green-400 border border-green-500/40 px-2 py-0.5 rounded text-xs">
-                                🟢 G:#{activeChunkIndex + 2}
-                              </span>
-                            )}
-                            {activeChunkIndex + 2 < chunks.length && (
-                              <span className="font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40 px-2 py-0.5 rounded text-xs">
-                                🔵 B:#{activeChunkIndex + 3}
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-xs font-bold text-cyan-400 font-mono">RGB 3X MULTIPLEX</span>
                         </div>
                       )}
                       <div className="w-full flex-1 min-h-0 min-w-0 flex items-center justify-center p-1 sm:p-1.5 overflow-hidden select-none">
@@ -3358,89 +2727,33 @@ export const Transmitter: React.FC<Props> = ({
           {/* Bottom Playback Navigation & Downloads */}
           <div className="w-full max-w-xl flex flex-wrap items-center justify-center gap-3 sm:gap-4 flex-shrink-0">
             <button
-              type="button"
-              onClick={() => {
-                if (isQueueEmpty) return;
-                setCurrentPage((prev) => (prev + 1) % totalPages);
-              }}
-              disabled={isQueueEmpty || isProcessing || isTransitioningQueue}
-              className="fs-btn-dark p-3 rounded-xl border cursor-pointer shadow-md flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
-              title={isQueueEmpty ? (lang === 'fa' ? 'صف ارسال در حال حاضر خالی است' : 'Queue is empty') : (lang === 'fa' ? 'صفحه بعدی' : 'Next Page')}
+              onClick={() => setCurrentPage((prev) => (prev + 1) % totalPages)}
+              className="fs-btn-dark p-3 rounded-xl border cursor-pointer shadow-md flex items-center justify-center"
+              title={lang === 'fa' ? 'صفحه بعدی' : 'Next Page'}
             >
               <SkipForward className="w-5 h-5 text-white" />
             </button>
             <button
-              type="button"
-              onClick={handlePlayToggle}
-              disabled={isQueueEmpty || isProcessing || isTransitioningQueue}
-              className={`px-8 py-3 rounded-2xl font-black text-sm shadow-xl transition flex items-center gap-2 ${
-                isQueueEmpty
-                  ? 'bg-slate-800 text-slate-500 opacity-50 cursor-not-allowed pointer-events-none'
-                  : !hasUserStarted
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40 animate-pulse cursor-pointer'
-                  : isCycleFinished
-                  ? 'bg-teal-600 hover:bg-teal-500 text-white shadow-teal-950/40 cursor-pointer'
-                  : isPlaying
-                  ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-950/40 cursor-pointer'
-                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40 cursor-pointer'
+              onClick={() => setIsPlaying(!isPlaying)}
+              className={`px-8 py-3 rounded-2xl font-black text-sm cursor-pointer shadow-xl transition flex items-center gap-2 ${
+                isPlaying
+                  ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-950/40'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40'
               }`}
-              title={
-                isQueueEmpty
-                  ? (lang === 'fa' ? 'صف ارسال در حال حاضر خالی است' : 'Queue is empty')
-                  : !hasUserStarted
-                  ? (lang === 'fa' ? 'شروع فرآیند ارسال' : 'Start Transmission')
-                  : isCycleFinished
-                  ? (lang === 'fa' ? 'تکرار چرخه ارسال' : 'Replay Cycle')
-                  : isPlaying
-                  ? (lang === 'fa' ? 'توقف' : 'Pause')
-                  : (lang === 'fa' ? 'ادامه پخش' : 'Resume')
-              }
             >
-              {isQueueEmpty ? (
-                <>
-                  <Inbox className="w-5 h-5" />
-                  <span>{lang === 'fa' ? 'صف خالی است' : 'Queue Empty'}</span>
-                </>
-              ) : !hasUserStarted ? (
-                <>
-                  <Play className="w-5 h-5 fill-current" />
-                  <span className="text-white font-bold">{lang === 'fa' ? 'شروع ارسال' : 'Start'}</span>
-                </>
-              ) : isCycleFinished ? (
-                <>
-                  <RotateCcw className="w-5 h-5" />
-                  <span className="text-white font-bold">{lang === 'fa' ? 'تکرار چرخه' : 'Replay'}</span>
-                </>
-              ) : isPlaying ? (
-                <>
-                  <Pause className="w-5 h-5 fill-current" />
-                  <span className="text-white font-bold">{lang === 'fa' ? 'توقف' : 'Pause'}</span>
-                </>
-              ) : (
-                <>
-                  <Play className="w-5 h-5 fill-current" />
-                  <span className="text-white font-bold">{lang === 'fa' ? 'پخش' : 'Play'}</span>
-                </>
-              )}
+              {isPlaying ? (lang === 'fa' ? 'توقف' : 'Pause') : (lang === 'fa' ? 'پخش' : 'Play')}
             </button>
             <button
-              type="button"
-              onClick={() => {
-                if (isQueueEmpty) return;
-                setCurrentPage((prev) => (prev > 0 ? prev - 1 : totalPages - 1));
-              }}
-              disabled={isQueueEmpty || isProcessing || isTransitioningQueue}
-              className="fs-btn-dark p-3 rounded-xl border cursor-pointer shadow-md flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
-              title={isQueueEmpty ? (lang === 'fa' ? 'صف ارسال در حال حاضر خالی است' : 'Queue is empty') : (lang === 'fa' ? 'صفحه قبلی' : 'Previous Page')}
+              onClick={() => setCurrentPage((prev) => (prev > 0 ? prev - 1 : totalPages - 1))}
+              className="fs-btn-dark p-3 rounded-xl border cursor-pointer shadow-md flex items-center justify-center"
+              title={lang === 'fa' ? 'صفحه قبلی' : 'Previous Page'}
             >
               <SkipBack className="w-5 h-5 text-white" />
             </button>
 
             <button
-              type="button"
               onClick={handleDownloadQrPng}
-              disabled={isQueueEmpty}
-              className="fs-btn-dark flex items-center gap-1.5 px-4 py-2.5 rounded-xl border text-white text-xs font-bold transition cursor-pointer shadow-md disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className="fs-btn-dark flex items-center gap-1.5 px-4 py-2.5 rounded-xl border text-white text-xs font-bold transition cursor-pointer shadow-md"
               title={lang === 'fa' ? 'دانلود فایل PNG' : 'Download PNG'}
             >
               <Download className="w-4 h-4 text-cyan-400" />
@@ -3448,10 +2761,8 @@ export const Transmitter: React.FC<Props> = ({
             </button>
 
             <button
-              type="button"
               onClick={handleDownloadQrSvg}
-              disabled={isQueueEmpty}
-              className="fs-btn-dark flex items-center gap-1.5 px-4 py-2.5 rounded-xl border text-white text-xs font-bold transition cursor-pointer shadow-md disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className="fs-btn-dark flex items-center gap-1.5 px-4 py-2.5 rounded-xl border text-white text-xs font-bold transition cursor-pointer shadow-md"
               title={lang === 'fa' ? 'دانلود فایل برداری SVG' : 'Download SVG'}
             >
               <Download className="w-4 h-4 text-emerald-400" />
@@ -3533,13 +2844,6 @@ export const Transmitter: React.FC<Props> = ({
           </div>
         </div>
       )}
-      {/* Official Air-Gap Cryptographic Emission Certificate Modal */}
-      <EmissionCertificateModal
-        isOpen={isCertModalOpen}
-        onClose={() => setIsCertModalOpen(false)}
-        certificate={activeCertificate}
-        lang={lang}
-      />
     </div>
   );
 };

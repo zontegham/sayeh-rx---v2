@@ -1,0 +1,10 @@
+services:
+  transmitter:
+    build: .
+    image: sayeh-tx-web:latest
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+      - "8444:443"
+    volumes:
+      - /opt/sayeh-rx/acme/65.109.18.195_ecc:/etc/nginx/tls:ro
